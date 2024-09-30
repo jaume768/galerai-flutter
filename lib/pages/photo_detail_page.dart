@@ -1,9 +1,11 @@
+// photo_detail_page.dart
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-
 import 'edit_photo_page.dart';
 import 'full_image_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PhotoDetailPage extends StatelessWidget {
   final DocumentReference photoRef;
@@ -47,11 +49,13 @@ class PhotoDetailPage extends StatelessWidget {
                   },
                   child: Hero(
                     tag: photoRef.id,
-                    child: Image.network(
-                      imageUrl,
+                    child: CachedNetworkImage(
+                      imageUrl: imageUrl,
                       width: double.infinity,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
+                      placeholder: (context, url) =>
+                          Center(child: CircularProgressIndicator()),
+                      errorWidget: (context, url, error) {
                         return Column(
                           children: [
                             Icon(Icons.broken_image, size: 100),

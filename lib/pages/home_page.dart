@@ -13,6 +13,8 @@ import 'package:path/path.dart' as path;
 import 'package:http_parser/http_parser.dart';
 import 'package:rxdart/rxdart.dart';
 import 'dart:async';
+import 'package:hive/hive.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -36,15 +38,50 @@ class _HomePageState extends State<HomePage> {
   // Usar BehaviorSubject para debounce
   final _searchSubject = BehaviorSubject<String>();
 
-  final String backendUrl = 'https://node-galerai-production.up.railway.app/generate';
+  final String backendUrl =
+      'https://node-galerai-production.up.railway.app/generate';
 
   // Lista de IDs de fotos que han fallado al cargar
   final Set<String> _invalidPhotoIds = {};
+
+  // Stream y lista local de fotos
+  late final Stream<QuerySnapshot<Object?>> _photosStream;
+  List<QueryDocumentSnapshot<Object?>> _photos = [];
+  final Box _photosBox = Hive.box('photosBox');
+
+  // Timestamp de la última foto cargada
+  Timestamp? _lastTimestamp;
 
   @override
   void initState() {
     super.initState();
 
+    // Cargar fotos desde Hive
+    List<dynamic> storedPhotos = _photosBox.get('photos', defaultValue: []);
+    _photos = storedPhotos.cast<QueryDocumentSnapshot<Object?>>();
+
+    if (_photos.isNotEmpty) {
+      _lastTimestamp = _photos.first['timestamp'];
+    }
+
+    // Configurar el stream
+    _photosStream = _firestore
+        .collection('photos')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+
+    _photosStream.listen((snapshot) {
+      setState(() {
+        _photos = snapshot.docs;
+        if (_photos.isNotEmpty) {
+          _lastTimestamp = _photos.first['timestamp'];
+        }
+        // Guardar en Hive
+        _photosBox.put('photos', _photos);
+      });
+    });
+
+    // Configurar el debounce para la búsqueda
     _searchSubject.debounceTime(Duration(milliseconds: 500)).listen((value) {
       setState(() {
         _searchQuery = value.length >= 3 ? value : '';
@@ -101,7 +138,7 @@ class _HomePageState extends State<HomePage> {
         Reference ref = _storage.ref().child('photos/$fileName');
         SettableMetadata metadata = SettableMetadata(
           contentType:
-          'image/${path.extension(image.path).replaceFirst('.', '')}',
+              'image/${path.extension(image.path).replaceFirst('.', '')}',
         );
         UploadTask uploadTask = ref.putFile(file, metadata);
         TaskSnapshot snapshot = await uploadTask;
@@ -132,6 +169,55 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _reloadPhotos() async {
+    if (_isLoading) return; // Evita recargas si ya se está cargando
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      if (_lastTimestamp != null) {
+        QuerySnapshot<Object?> newPhotosSnapshot = await _firestore
+            .collection('photos')
+            .where('timestamp', isGreaterThan: _lastTimestamp)
+            .orderBy('timestamp', descending: true)
+            .get();
+
+        if (newPhotosSnapshot.docs.isNotEmpty) {
+          setState(() {
+            _photos = newPhotosSnapshot.docs + _photos;
+            _lastTimestamp = _photos.first['timestamp'];
+            // Actualizar Hive
+            _photosBox.put('photos', _photos);
+          });
+        }
+      } else {
+        // Si no hay timestamp, cargar las primeras fotos
+        QuerySnapshot<Object?> initialSnapshot = await _firestore
+            .collection('photos')
+            .orderBy('timestamp', descending: true)
+            .limit(20)
+            .get();
+
+        setState(() {
+          _photos = initialSnapshot.docs;
+          if (_photos.isNotEmpty) {
+            _lastTimestamp = _photos.first['timestamp'];
+          }
+          _photosBox.put('photos', _photos);
+        });
+      }
+    } catch (e) {
+      print('Error al recargar fotos: $e');
+      // Manejo de errores
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -140,7 +226,8 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  List<QueryDocumentSnapshot> _filterPhotos(List<QueryDocumentSnapshot> photos) {
+  List<QueryDocumentSnapshot<Object?>> _filterPhotos(
+      List<QueryDocumentSnapshot<Object?>> photos) {
     if (_searchQuery.isEmpty) {
       return photos;
     } else {
@@ -170,68 +257,50 @@ class _HomePageState extends State<HomePage> {
       },
       child: Scaffold(
         appBar: _buildAppBar(),
-        body: _isLoading
+        body: _isLoading && _photos.isEmpty
             ? Center(child: CircularProgressIndicator())
             : Column(
-          children: [
-            if (_errorMessage.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  _errorMessage,
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('photos')
-                    .orderBy('timestamp', descending: true)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                        child: Text('Error al cargar las fotos'));
-                  }
-                  if (snapshot.connectionState ==
-                      ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  }
-                  final photos = snapshot.data!.docs;
-                  if (photos.isEmpty) {
-                    return Center(child: Text('No hay fotos subidas.'));
-                  }
-                  final filteredPhotos = _filterPhotos(photos)
-                      .where((photo) => !_invalidPhotoIds.contains(photo.id))
-                      .toList();
-
-                  print('Total de fotos después del filtrado: ${filteredPhotos.length}');
-
-                  if (filteredPhotos.isEmpty) {
-                    return Center(child: Text('No hay fotos válidas.'));
-                  }
-                  return GridView.builder(
-                    padding: EdgeInsets.all(10.0),
-                    gridDelegate:
-                    SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 10.0,
-                      mainAxisSpacing: 10.0,
+                children: [
+                  if (_errorMessage.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        _errorMessage,
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ),
-                    itemCount: filteredPhotos.length,
-                    itemBuilder: (context, index) {
-                      final photo = filteredPhotos[index];
-                      return PhotoGridItem(
-                        photo: photo,
-                        onImageError: _handleImageError,
-                      );
-                    },
-                  );
-                },
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: _reloadPhotos,
+                      child: _photos.isEmpty
+                          ? Center(child: Text('No hay fotos subidas.'))
+                          : GridView.builder(
+                              padding: EdgeInsets.all(10.0),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 10.0,
+                                mainAxisSpacing: 10.0,
+                              ),
+                              itemCount: _filterPhotos(_photos)
+                                  .where((photo) =>
+                                      !_invalidPhotoIds.contains(photo.id))
+                                  .length,
+                              itemBuilder: (context, index) {
+                                final filteredPhotos = _filterPhotos(_photos)
+                                    .where((photo) =>
+                                        !_invalidPhotoIds.contains(photo.id));
+                                final photo = filteredPhotos.elementAt(index);
+                                return PhotoGridItem(
+                                  photo: photo,
+                                  onImageError: _handleImageError,
+                                );
+                              },
+                            ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
         floatingActionButton: FloatingActionButton(
           onPressed: _pickAndUploadImage,
           child: Icon(Icons.add_a_photo),
@@ -243,11 +312,16 @@ class _HomePageState extends State<HomePage> {
   AppBar _buildAppBar() {
     return AppBar(
       title: Text('GalerAI'),
+      actions: [
+        IconButton(
+          icon: Icon(Icons.refresh),
+          onPressed: _reloadPhotos,
+        ),
+      ],
       bottom: PreferredSize(
         preferredSize: Size.fromHeight(60.0),
         child: Padding(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: TextField(
             controller: _searchController,
             focusNode: _searchFocusNode,
