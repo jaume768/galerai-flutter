@@ -8,7 +8,7 @@ import 'full_image_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class PhotoDetailPage extends StatelessWidget {
-  final DocumentReference photoRef;
+  final DocumentReference<Object?> photoRef;
 
   const PhotoDetailPage({Key? key, required this.photoRef}) : super(key: key);
 
@@ -18,7 +18,7 @@ class PhotoDetailPage extends StatelessWidget {
       appBar: AppBar(
         title: Text('Detalles de la foto'),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: StreamBuilder<DocumentSnapshot<Object?>>(
         stream: photoRef.snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {

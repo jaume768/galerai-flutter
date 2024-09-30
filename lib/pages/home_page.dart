@@ -15,6 +15,7 @@ import 'package:rxdart/rxdart.dart';
 import 'dart:async';
 import 'package:hive/hive.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:gallery_saver/gallery_saver.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -93,8 +94,8 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  Future<void> _pickAndUploadImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(source: source);
     if (image == null) return;
 
     setState(() {
@@ -103,6 +104,11 @@ class _HomePageState extends State<HomePage> {
     });
 
     try {
+      // Si la fuente es la cámara, guardar la imagen en la galería
+      if (source == ImageSource.camera) {
+        await GallerySaver.saveImage(image.path, albumName: 'GalerAI');
+      }
+
       // Leer la imagen como bytes
       File file = File(image.path);
       print(file);
@@ -249,6 +255,36 @@ class _HomePageState extends State<HomePage> {
     print('Foto inválida agregada al conjunto: $photoId');
   }
 
+  void _showImageSourceActionSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: Icon(Icons.photo_library),
+                title: Text('Seleccionar de la Galería'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickAndUploadImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.photo_camera),
+                title: Text('Tomar Foto'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickAndUploadImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -302,7 +338,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
         floatingActionButton: FloatingActionButton(
-          onPressed: _pickAndUploadImage,
+          onPressed: _showImageSourceActionSheet,
           child: Icon(Icons.add_a_photo),
         ),
       ),
