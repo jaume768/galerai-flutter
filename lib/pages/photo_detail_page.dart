@@ -76,81 +76,110 @@ class PhotoDetailPage extends StatelessWidget {
           String formattedDate =
           DateFormat('dd/MM/yyyy').format(timestamp.toDate());
           bool isFavorite = photoData['isFavorite'] ?? false;
+          String? albumId = photoData['albumId'];
 
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    // Navegar a la página para ver la imagen en pantalla completa
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            FullImagePage(imageUrl: imageUrl),
-                      ),
-                    );
-                  },
-                  child: Hero(
-                    tag: photoRef.id,
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      width: double.infinity,
-                      fit: BoxFit.contain,
-                      placeholder: (context, url) =>
-                          Center(child: CircularProgressIndicator()),
-                      errorWidget: (context, url, error) {
-                        return Column(
-                          children: [
-                            Icon(Icons.broken_image, size: 100),
-                            SizedBox(height: 16),
-                            Text('No se pudo cargar la imagen'),
-                          ],
+          return FutureBuilder<DocumentSnapshot>(
+            future: albumId != null
+                ? FirebaseFirestore.instance
+                .collection('albums')
+                .doc(albumId)
+                .get()
+                : null,
+            builder: (context, albumSnapshot) {
+              String albumName = 'Sin Álbum';
+              if (albumId != null && albumSnapshot.hasData && albumSnapshot.data!.exists) {
+                albumName = albumSnapshot.data!['name'];
+              }
+
+              return SingleChildScrollView(
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        // Navegar a la página para ver la imagen en pantalla completa
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FullImagePage(imageUrl: imageUrl),
+                          ),
                         );
                       },
+                      child: Hero(
+                        tag: photoRef.id,
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          width: double.infinity,
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) =>
+                              Center(child: CircularProgressIndicator()),
+                          errorWidget: (context, url, error) {
+                            return Column(
+                              children: [
+                                Icon(Icons.broken_image, size: 100),
+                                SizedBox(height: 16),
+                                Text('No se pudo cargar la imagen'),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
                     ),
-                  ),
+                    SizedBox(height: 16.0),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Text(
+                        description,
+                        style: TextStyle(fontSize: 18.0),
+                      ),
+                    ),
+                    SizedBox(height: 16.0),
+                    Wrap(
+                      spacing: 8.0,
+                      children: tags.map((tag) {
+                        return Chip(
+                          label: Text(tag),
+                        );
+                      }).toList(),
+                    ),
+                    SizedBox(height: 16.0),
+                    Text(
+                      'Fecha: $formattedDate',
+                      style: TextStyle(fontSize: 16.0),
+                    ),
+                    SizedBox(height: 8.0),
+                    Text(
+                      'Álbum: $albumName',
+                      style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 16.0),
+                    IconButton(
+                      icon: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                        color: Colors.red,
+                        size: 32,
+                      ),
+                      onPressed: () {
+                        _toggleFavorite(photoRef, isFavorite);
+                      },
+                    ),
+                  ],
                 ),
-                SizedBox(height: 16.0),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Text(
-                    description,
-                    style: TextStyle(fontSize: 18.0),
-                  ),
-                ),
-                SizedBox(height: 16.0),
-                Wrap(
-                  spacing: 8.0,
-                  children: tags.map((tag) {
-                    return Chip(
-                      label: Text(tag),
-                    );
-                  }).toList(),
-                ),
-                SizedBox(height: 16.0),
-                Text(
-                  'Fecha: $formattedDate',
-                  style: TextStyle(fontSize: 16.0),
-                ),
-                SizedBox(height: 16.0),
-                IconButton(
-                  icon: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: Colors.red,
-                    size: 32,
-                  ),
-                  onPressed: () {
-                    photoRef.update({'isFavorite': !isFavorite});
-                  },
-                ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
       floatingActionButton: _buildFloatingActionButton(context),
     );
+  }
+
+  void _toggleFavorite(DocumentReference photoRef, bool currentStatus) async {
+    try {
+      await photoRef.update({'isFavorite': !currentStatus});
+    } catch (e) {
+      print('Error al actualizar isFavorite: $e');
+      // Puedes mostrar un mensaje de error al usuario si lo deseas
+    }
   }
 
   Widget _buildFloatingActionButton(BuildContext context) {

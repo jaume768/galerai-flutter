@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:galerai/pages/home_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +22,19 @@ void main() async {
 
   // Inicialización de Hive
   await Hive.initFlutter();
+
+  // Abrir las cajas de Hive
   await Hive.openBox('photosBox');
+  print('photosBox abierta');
+
+  await Hive.openBox('albumsBox');
+  print('albumsBox abierta');
+
+  // Habilitar la persistencia offline de Firestore
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
 
   runApp(MyApp());
 }
@@ -34,8 +47,8 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false, // Elimina el banner de "Debug"
       theme: ThemeData.dark().copyWith(
         colorScheme: ThemeData.dark().colorScheme.copyWith(
-              secondary: Colors.blueAccent,
-            ),
+          secondary: Colors.blueAccent,
+        ),
       ),
       home: HomePage(),
     );
