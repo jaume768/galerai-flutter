@@ -7,169 +7,189 @@ import 'full_image_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 
-class PhotoDetailPage extends StatelessWidget {
-  final DocumentReference<Object?> photoRef;
+class PhotoDetailPage extends StatefulWidget {
+  final DocumentReference<Object?>? photoRef;
+  final Map<String, dynamic>? photoData; // Datos locales desde Hive
+  final String? photoId; // Identificador único para Hero animation
 
-  const PhotoDetailPage({Key? key, required this.photoRef}) : super(key: key);
+  const PhotoDetailPage({
+    Key? key,
+    this.photoRef,
+    this.photoData,
+    this.photoId,
+  }) : super(key: key);
 
-  void _moveToAlbum(BuildContext context, Map<String, dynamic> photoData) async {
-    // Obtener la lista de álbumes
-    var albumsSnapshot = await FirebaseFirestore.instance
-        .collection('albums')
-        .orderBy('createdAt')
-        .get();
+  @override
+  _PhotoDetailPageState createState() => _PhotoDetailPageState();
+}
 
-    var albums = albumsSnapshot.docs;
+class _PhotoDetailPageState extends State<PhotoDetailPage> {
+  Map<String, dynamic>? photoData;
+  String? photoId;
 
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return ListView.builder(
-          itemCount: albums.length + 1,
-          itemBuilder: (context, index) {
-            if (index == 0) {
-              return ListTile(
-                title: Text('Sin Álbum'),
-                onTap: () {
-                  photoRef.update({'albumId': null});
-                  Navigator.of(context).pop();
-                },
-              );
-            } else {
-              var album = albums[index - 1];
-              return ListTile(
-                title: Text(album['name']),
-                onTap: () {
-                  photoRef.update({'albumId': album.id});
-                  Navigator.of(context).pop();
-                },
-              );
-            }
-          },
-        );
-      },
-    );
+  @override
+  void initState() {
+    super.initState();
+    if (widget.photoData != null) {
+      photoData = widget.photoData;
+      photoId = widget.photoId;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Detalles de la foto'),
-      ),
-      body: StreamBuilder<DocumentSnapshot<Object?>>(
-        stream: photoRef.snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error al cargar la foto.'));
-          }
+    if (widget.photoRef != null) {
+      // Manejar datos desde Firestore
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Detalles de la foto'),
+        ),
+        body: StreamBuilder<DocumentSnapshot<Object?>>(
+          stream: widget.photoRef!.snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text('Error al cargar la foto.'));
+            }
 
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return Center(child: Text('La foto no existe.'));
-          }
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return Center(child: Text('La foto no existe.'));
+            }
 
-          var photoData = snapshot.data!.data() as Map<String, dynamic>;
-          String imageUrl = photoData['imageUrl'] ?? '';
-          String description = photoData['description'] ?? '';
-          List<dynamic> tags = photoData['tags'] ?? [];
-          Timestamp timestamp = photoData['timestamp'] ?? Timestamp.now();
-          String formattedDate =
-          DateFormat('dd/MM/yyyy').format(timestamp.toDate());
-          bool isFavorite = photoData['isFavorite'] ?? false;
-          String? albumId = photoData['albumId'];
+            var data = snapshot.data!.data() as Map<String, dynamic>;
+            return _buildPhotoDetail(context, data, widget.photoRef);
+          },
+        ),
+        floatingActionButton: _buildFloatingActionButton(context, widget.photoRef),
+      );
+    } else if (photoData != null) {
+      // Manejar datos locales desde Hive
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Detalles de la foto'),
+        ),
+        body: _buildPhotoDetail(context, photoData!, null),
+        // Puedes deshabilitar el FAB o adaptarlo según tus necesidades
+      );
+    } else {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Detalles de la foto'),
+        ),
+        body: Center(child: Text('No se pudo cargar la foto.')),
+      );
+    }
+  }
 
-          return FutureBuilder<DocumentSnapshot>(
-            future: albumId != null
-                ? FirebaseFirestore.instance
-                .collection('albums')
-                .doc(albumId)
-                .get()
-                : null,
-            builder: (context, albumSnapshot) {
-              String albumName = 'Sin Álbum';
-              if (albumId != null && albumSnapshot.hasData && albumSnapshot.data!.exists) {
-                albumName = albumSnapshot.data!['name'];
-              }
+  Widget _buildPhotoDetail(BuildContext context, Map<String, dynamic> data, DocumentReference<Object?>? photoRef) {
+    String imageUrl = data['imageUrl'] ?? '';
+    String description = data['description'] ?? '';
+    List<dynamic> tags = data['tags'] ?? [];
+    DateTime timestamp;
 
-              return SingleChildScrollView(
-                child: Column(
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        // Navegar a la página para ver la imagen en pantalla completa
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => FullImagePage(imageUrl: imageUrl),
-                          ),
-                        );
-                      },
-                      child: Hero(
-                        tag: photoRef.id,
-                        child: CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          width: double.infinity,
-                          fit: BoxFit.contain,
-                          placeholder: (context, url) =>
-                              Center(child: CircularProgressIndicator()),
-                          errorWidget: (context, url, error) {
-                            return Column(
-                              children: [
-                                Icon(Icons.broken_image, size: 100),
-                                SizedBox(height: 16),
-                                Text('No se pudo cargar la imagen'),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
+    if (data['timestamp'] is Timestamp) {
+      timestamp = (data['timestamp'] as Timestamp).toDate();
+    } else if (data['timestamp'] is DateTime) {
+      timestamp = data['timestamp'];
+    } else {
+      timestamp = DateTime.now();
+    }
+
+    String formattedDate = DateFormat('dd/MM/yyyy').format(timestamp);
+    bool isFavorite = data['isFavorite'] ?? false;
+    String? albumId = data['albumId'];
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: albumId != null
+          ? FirebaseFirestore.instance
+          .collection('albums')
+          .doc(albumId)
+          .get()
+          : null,
+      builder: (context, albumSnapshot) {
+        String albumName = 'Sin Álbum';
+        if (albumId != null && albumSnapshot.hasData && albumSnapshot.data!.exists) {
+          albumName = albumSnapshot.data!['name'];
+        }
+
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  // Navegar a la página para ver la imagen en pantalla completa
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FullImagePage(imageUrl: imageUrl),
                     ),
-                    SizedBox(height: 16.0),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text(
-                        description,
-                        style: TextStyle(fontSize: 18.0),
-                      ),
-                    ),
-                    SizedBox(height: 16.0),
-                    Wrap(
-                      spacing: 8.0,
-                      children: tags.map((tag) {
-                        return Chip(
-                          label: Text(tag),
-                        );
-                      }).toList(),
-                    ),
-                    SizedBox(height: 16.0),
-                    Text(
-                      'Fecha: $formattedDate',
-                      style: TextStyle(fontSize: 16.0),
-                    ),
-                    SizedBox(height: 8.0),
-                    Text(
-                      'Álbum: $albumName',
-                      style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 16.0),
-                    IconButton(
-                      icon: Icon(
-                        isFavorite ? Icons.favorite : Icons.favorite_border,
-                        color: Colors.red,
-                        size: 32,
-                      ),
-                      onPressed: () {
-                        _toggleFavorite(photoRef, isFavorite);
-                      },
-                    ),
-                  ],
+                  );
+                },
+                child: Hero(
+                  tag: photoRef != null ? photoRef.id : photoId ?? imageUrl,
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                    placeholder: (context, url) =>
+                        Center(child: CircularProgressIndicator()),
+                    errorWidget: (context, url, error) {
+                      return Column(
+                        children: [
+                          Icon(Icons.broken_image, size: 100),
+                          SizedBox(height: 16),
+                          Text('No se pudo cargar la imagen'),
+                        ],
+                      );
+                    },
+                  ),
                 ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: _buildFloatingActionButton(context),
+              ),
+              SizedBox(height: 16.0),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  description,
+                  style: TextStyle(fontSize: 18.0),
+                ),
+              ),
+              SizedBox(height: 16.0),
+              Wrap(
+                spacing: 8.0,
+                children: tags.map((tag) {
+                  return Chip(
+                    label: Text(tag),
+                  );
+                }).toList(),
+              ),
+              SizedBox(height: 16.0),
+              Text(
+                'Fecha: $formattedDate',
+                style: TextStyle(fontSize: 16.0),
+              ),
+              SizedBox(height: 8.0),
+              Text(
+                'Álbum: $albumName',
+                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 16.0),
+              IconButton(
+                icon: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: Colors.red,
+                  size: 32,
+                ),
+                onPressed: () {
+                  if (photoRef != null) {
+                    _toggleFavorite(photoRef, isFavorite);
+                  } else {
+                    // Manejar actualización de favorito si es necesario
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -182,7 +202,12 @@ class PhotoDetailPage extends StatelessWidget {
     }
   }
 
-  Widget _buildFloatingActionButton(BuildContext context) {
+  Widget _buildFloatingActionButton(BuildContext context, DocumentReference<Object?>? photoRef) {
+    if (photoRef == null) {
+      // Si no hay photoRef, no mostramos el FAB
+      return Container();
+    }
+
     return StreamBuilder<DocumentSnapshot<Object?>>(
       stream: photoRef.snapshots(),
       builder: (context, snapshot) {
@@ -250,6 +275,53 @@ class PhotoDetailPage extends StatelessWidget {
               child: Icon(Icons.delete),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  void _moveToAlbum(BuildContext context, Map<String, dynamic> photoData) async {
+    String? currentAlbumId = photoData['albumId'];
+
+    // Obtener la lista de álbumes
+    var albumsSnapshot = await FirebaseFirestore.instance
+        .collection('albums')
+        .orderBy('createdAt')
+        .get();
+
+    var albums = albumsSnapshot.docs;
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return ListView.builder(
+          itemCount: albums.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return ListTile(
+                leading: currentAlbumId == null ? Icon(Icons.check) : null,
+                title: Text('Sin Álbum'),
+                onTap: () {
+                  if (currentAlbumId != null) {
+                    widget.photoRef!.update({'albumId': null});
+                  }
+                  Navigator.of(context).pop();
+                },
+              );
+            } else {
+              var album = albums[index - 1];
+              return ListTile(
+                leading: currentAlbumId == album.id ? Icon(Icons.check) : null,
+                title: Text(album['name']),
+                onTap: () {
+                  if (currentAlbumId != album.id) {
+                    widget.photoRef!.update({'albumId': album.id});
+                  }
+                  Navigator.of(context).pop();
+                },
+              );
+            }
+          },
         );
       },
     );

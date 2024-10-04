@@ -10,7 +10,7 @@ typedef OnImageErrorCallback = void Function(String photoId);
 
 class PhotoGridItem extends StatelessWidget {
   final QueryDocumentSnapshot<Object?>? photo;
-  final Map<String, dynamic>? photoData; // Nuevo parámetro para datos locales
+  final Map<String, dynamic>? photoData; // Datos locales desde Hive
   final OnImageErrorCallback onImageError;
 
   const PhotoGridItem({
@@ -67,9 +67,16 @@ class PhotoGridItem extends StatelessWidget {
                   PhotoDetailPage(photoRef: photo!.reference),
             ),
           );
-        } else {
-          // Manejo para datos locales si es necesario
-          // Puedes implementar una versión local de PhotoDetailPage
+        } else if (photoData != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PhotoDetailPage(
+                photoData: photoData!,
+                photoId: imageUrl, // Usa imageUrl como identificador único
+              ),
+            ),
+          );
         }
       },
       child: Stack(
@@ -122,7 +129,8 @@ class PhotoGridItem extends StatelessWidget {
                 if (photo != null) {
                   _toggleFavorite(photo!.reference, isFavorite);
                 } else {
-                  // Manejo para datos locales si es necesario
+                  // Manejar actualización de favorito con photoData si es necesario
+                  // Por ejemplo, actualizar en Firestore si tienes el ID
                 }
               },
             ),

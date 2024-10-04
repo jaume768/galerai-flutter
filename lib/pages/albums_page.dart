@@ -1,5 +1,6 @@
 // albums_page.dart
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'album_photos_page.dart';
@@ -170,12 +171,18 @@ class _AlbumsPageState extends State<AlbumsPage> {
             });
           }
 
-          return ListView.builder(
+          return GridView.builder(
+            padding: EdgeInsets.all(10.0),
             itemCount: albums.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2, // Puedes ajustar el número de columnas
+              crossAxisSpacing: 10.0,
+              mainAxisSpacing: 10.0,
+              childAspectRatio: 0.8, // Ajusta la proporción para adaptarse a la imagen y el texto
+            ),
             itemBuilder: (context, index) {
               var album = albums[index];
-              return ListTile(
-                title: Text(album['name']),
+              return GestureDetector(
                 onTap: () {
                   Navigator.push(
                     context,
@@ -187,18 +194,57 @@ class _AlbumsPageState extends State<AlbumsPage> {
                     ),
                   );
                 },
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.edit),
-                      onPressed: () => _showEditAlbumDialog(album),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _deleteAlbum(album),
-                    ),
-                  ],
+                child: Card(
+                  elevation: 4.0,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: FutureBuilder<QuerySnapshot>(
+                          future: _firestore
+                              .collection('photos')
+                              .where('albumId', isEqualTo: album.id)
+                              .orderBy('timestamp', descending: true)
+                              .limit(1)
+                              .get(),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+                              var photoData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                              String imageUrl = photoData['imageUrl'];
+                              return CachedNetworkImage(
+                                imageUrl: imageUrl,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Center(child: CircularProgressIndicator()),
+                                errorWidget: (context, url, error) => Icon(Icons.image, size: 50),
+                              );
+                            } else {
+                              return Icon(Icons.image_not_supported, size: 50);
+                            }
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: Text(
+                          album['name'],
+                          style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.edit),
+                            onPressed: () => _showEditAlbumDialog(album),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _deleteAlbum(album),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
