@@ -1,7 +1,6 @@
 // all_photos_page.dart
 
 import 'package:flutter/material.dart';
-import 'photo_detail_page.dart';
 import 'photo_grid_item.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
@@ -13,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:http_parser/http_parser.dart';
 import 'package:gallery_saver/gallery_saver.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AllPhotosPage extends StatefulWidget {
   const AllPhotosPage({Key? key}) : super(key: key);
@@ -23,12 +23,13 @@ class AllPhotosPage extends StatefulWidget {
 
 class _AllPhotosPageState extends State<AllPhotosPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FlutterSecureStorage storage = FlutterSecureStorage();
   final _searchSubject = BehaviorSubject<String>();
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
 
-  late final Stream<QuerySnapshot<Object?>> _photosStream;
+  Stream<QuerySnapshot<Object?>>? _photosStream;
 
   // Variables para agregar fotos
   final ImagePicker _picker = ImagePicker();
@@ -40,19 +41,27 @@ class _AllPhotosPageState extends State<AllPhotosPage> {
   final String backendUrl =
       'https://node-galerai-production.up.railway.app/generate';
 
+  String? userId;
+
   @override
   void initState() {
     super.initState();
-
-    _photosStream = _firestore
-        .collection('photos')
-        .orderBy('timestamp', descending: true)
-        .snapshots();
-
+    _initializeUser();
     _searchSubject.debounceTime(Duration(milliseconds: 500)).listen((value) {
       setState(() {
         _searchQuery = value.length >= 3 ? value : '';
       });
+    });
+  }
+
+  Future<void> _initializeUser() async {
+    userId = await storage.read(key: 'userId');
+    setState(() {
+      _photosStream = _firestore
+          .collection('photos')
+          .where('ownerId', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .snapshots();
     });
   }
 
@@ -128,7 +137,6 @@ class _AllPhotosPageState extends State<AllPhotosPage> {
 
       // Leer la imagen como bytes
       File file = File(image.path);
-      print(file);
       List<int> imageBytes = await file.readAsBytes();
 
       // Crear una solicitud multipart
@@ -161,7 +169,7 @@ class _AllPhotosPageState extends State<AllPhotosPage> {
         Reference ref = _storage.ref().child('photos/$fileName');
         SettableMetadata metadata = SettableMetadata(
           contentType:
-          'image/${path.extension(image.path).replaceFirst('.', '')}',
+              'image/${path.extension(image.path).replaceFirst('.', '')}',
         );
         UploadTask uploadTask = ref.putFile(file, metadata);
         TaskSnapshot snapshot = await uploadTask;
@@ -174,6 +182,7 @@ class _AllPhotosPageState extends State<AllPhotosPage> {
           'tags': tags,
           'timestamp': FieldValue.serverTimestamp(),
           'isFavorite': false,
+          'ownerId': userId, // Añadimos el ownerId
         });
       } else {
         print('Error al llamar al backend: ${response.body}');
@@ -197,41 +206,49 @@ class _AllPhotosPageState extends State<AllPhotosPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_photosStream == null) {
+      return Scaffold(
+        appBar: _buildAppBar(),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: _buildAppBar(),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : StreamBuilder<QuerySnapshot>(
-        stream: _photosStream,
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return CircularProgressIndicator();
+              stream: _photosStream,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return CircularProgressIndicator();
 
-          var photos = _filterPhotos(snapshot.data!.docs);
+                var photos = _filterPhotos(snapshot.data!.docs);
 
-          if (photos.isEmpty) {
-            return Center(child: Text('No hay fotos subidas.'));
-          }
+                if (photos.isEmpty) {
+                  return Center(child: Text('No hay fotos subidas.'));
+                }
 
-          return GridView.builder(
-            padding: EdgeInsets.all(10.0),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10.0,
-              mainAxisSpacing: 10.0,
+                return GridView.builder(
+                  padding: EdgeInsets.all(10.0),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 10.0,
+                    mainAxisSpacing: 10.0,
+                  ),
+                  itemCount: photos.length,
+                  itemBuilder: (context, index) {
+                    var photo = photos[index];
+                    return PhotoGridItem(
+                      photo: photo,
+                      onImageError: (id) {},
+                    );
+                  },
+                );
+              },
             ),
-            itemCount: photos.length,
-            itemBuilder: (context, index) {
-              var photo = photos[index];
-              return PhotoGridItem(
-                photo: photo,
-                onImageError: (id) {},
-              );
-            },
-          );
-        },
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showImageSourceActionSheet,
+        backgroundColor: Colors.deepPurpleAccent,
         child: Icon(Icons.add_a_photo),
       ),
     );

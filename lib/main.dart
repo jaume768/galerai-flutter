@@ -2,7 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:galerai/pages/home_page.dart';
+import 'package:galerai/pages/login_page.dart';
+import 'package:galerai/pages/register_page.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -40,17 +43,44 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
+  final FlutterSecureStorage storage = FlutterSecureStorage();
+
+  Future<bool> _checkLoggedIn() async {
+    String? userId = await storage.read(key: 'userId');
+    return userId != null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'GalerAI',
-      debugShowCheckedModeBanner: false, // Elimina el banner de "Debug"
+      debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         colorScheme: ThemeData.dark().colorScheme.copyWith(
-          secondary: Colors.blueAccent,
-        ),
+              secondary: Colors.blueAccent,
+            ),
       ),
-      home: HomePage(),
+      routes: {
+        '/home': (context) => HomePage(),
+        '/login': (context) => LoginPage(),
+        '/register': (context) => RegisterPage(),
+      },
+      home: FutureBuilder<bool>(
+        future: _checkLoggedIn(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          } else {
+            if (snapshot.data == true) {
+              return HomePage();
+            } else {
+              return LoginPage();
+            }
+          }
+        },
+      ),
     );
   }
 }

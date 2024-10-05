@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'album_photos_page.dart';
 import 'package:hive/hive.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AlbumsPage extends StatefulWidget {
   const AlbumsPage({Key? key}) : super(key: key);
@@ -15,8 +16,23 @@ class AlbumsPage extends StatefulWidget {
 
 class _AlbumsPageState extends State<AlbumsPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FlutterSecureStorage storage = FlutterSecureStorage();
   final TextEditingController _albumNameController = TextEditingController();
-  final Box _albumsBox = Hive.box('albumsBox'); // Asegúrate de que el nombre coincide
+  final Box _albumsBox =
+      Hive.box('albumsBox'); // Asegúrate de que el nombre coincide
+
+  String? userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeUser();
+  }
+
+  Future<void> _initializeUser() async {
+    userId = await storage.read(key: 'userId');
+    setState(() {});
+  }
 
   void _createAlbum() async {
     String albumName = _albumNameController.text.trim();
@@ -25,11 +41,13 @@ class _AlbumsPageState extends State<AlbumsPage> {
     DocumentReference docRef = await _firestore.collection('albums').add({
       'name': albumName,
       'createdAt': FieldValue.serverTimestamp(),
+      'ownerId': userId, // Añadimos el ownerId
     });
 
     _albumsBox.put(docRef.id, {
       'name': albumName,
       'createdAt': DateTime.now().toIso8601String(),
+      'ownerId': userId,
     });
 
     _albumNameController.clear();
@@ -128,6 +146,7 @@ class _AlbumsPageState extends State<AlbumsPage> {
                 _albumsBox.put(album.id, {
                   'name': newName,
                   'createdAt': DateTime.now().toIso8601String(),
+                  'ownerId': userId,
                 });
               }
               _albumNameController.clear();
@@ -142,6 +161,10 @@ class _AlbumsPageState extends State<AlbumsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (userId == null) {
+      return Center(child: CircularProgressIndicator());
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Álbumes'),
@@ -153,9 +176,14 @@ class _AlbumsPageState extends State<AlbumsPage> {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore.collection('albums').orderBy('createdAt').snapshots(),
+        stream: _firestore
+            .collection('albums')
+            .where('ownerId', isEqualTo: userId)
+            .orderBy('createdAt')
+            .snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData)
+            return Center(child: CircularProgressIndicator());
 
           var albums = snapshot.data!.docs;
 
@@ -167,7 +195,9 @@ class _AlbumsPageState extends State<AlbumsPage> {
           for (var album in albums) {
             _albumsBox.put(album.id, {
               'name': album['name'],
-              'createdAt': album['createdAt']?.toDate()?.toIso8601String() ?? DateTime.now().toIso8601String(),
+              'createdAt': album['createdAt']?.toDate()?.toIso8601String() ??
+                  DateTime.now().toIso8601String(),
+              'ownerId': userId,
             });
           }
 
@@ -178,7 +208,8 @@ class _AlbumsPageState extends State<AlbumsPage> {
               crossAxisCount: 2, // Puedes ajustar el número de columnas
               crossAxisSpacing: 10.0,
               mainAxisSpacing: 10.0,
-              childAspectRatio: 0.8, // Ajusta la proporción para adaptarse a la imagen y el texto
+              childAspectRatio:
+                  0.8, // Ajusta la proporción para adaptarse a la imagen y el texto
             ),
             itemBuilder: (context, index) {
               var album = albums[index];
@@ -204,18 +235,23 @@ class _AlbumsPageState extends State<AlbumsPage> {
                           future: _firestore
                               .collection('photos')
                               .where('albumId', isEqualTo: album.id)
+                              .where('ownerId', isEqualTo: userId)
                               .orderBy('timestamp', descending: true)
                               .limit(1)
                               .get(),
                           builder: (context, snapshot) {
-                            if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
-                              var photoData = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+                            if (snapshot.hasData &&
+                                snapshot.data!.docs.isNotEmpty) {
+                              var photoData = snapshot.data!.docs.first.data()
+                                  as Map<String, dynamic>;
                               String imageUrl = photoData['imageUrl'];
                               return CachedNetworkImage(
                                 imageUrl: imageUrl,
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => Center(child: CircularProgressIndicator()),
-                                errorWidget: (context, url, error) => Icon(Icons.image, size: 50),
+                                placeholder: (context, url) =>
+                                    Center(child: CircularProgressIndicator()),
+                                errorWidget: (context, url, error) =>
+                                    Icon(Icons.image, size: 50),
                               );
                             } else {
                               return Icon(Icons.image_not_supported, size: 50);
@@ -227,7 +263,8 @@ class _AlbumsPageState extends State<AlbumsPage> {
                         padding: EdgeInsets.all(8.0),
                         child: Text(
                           album['name'],
-                          style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              fontSize: 16.0, fontWeight: FontWeight.bold),
                         ),
                       ),
                       Row(

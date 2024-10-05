@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'photo_detail_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 typedef OnImageErrorCallback = void Function(String photoId);
 
@@ -63,8 +64,7 @@ class PhotoGridItem extends StatelessWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  PhotoDetailPage(photoRef: photo!.reference),
+              builder: (context) => PhotoDetailPage(photoRef: photo!.reference),
             ),
           );
         } else if (photoData != null) {

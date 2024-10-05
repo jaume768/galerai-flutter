@@ -59,7 +59,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
             return _buildPhotoDetail(context, data, widget.photoRef);
           },
         ),
-        floatingActionButton: _buildFloatingActionButton(context, widget.photoRef),
+        floatingActionButton:
+            _buildFloatingActionButton(context, widget.photoRef),
       );
     } else if (photoData != null) {
       // Manejar datos locales desde Hive
@@ -80,7 +81,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     }
   }
 
-  Widget _buildPhotoDetail(BuildContext context, Map<String, dynamic> data, DocumentReference<Object?>? photoRef) {
+  Widget _buildPhotoDetail(BuildContext context, Map<String, dynamic> data,
+      DocumentReference<Object?>? photoRef) {
     String imageUrl = data['imageUrl'] ?? '';
     String description = data['description'] ?? '';
     List<dynamic> tags = data['tags'] ?? [];
@@ -100,14 +102,13 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
 
     return FutureBuilder<DocumentSnapshot>(
       future: albumId != null
-          ? FirebaseFirestore.instance
-          .collection('albums')
-          .doc(albumId)
-          .get()
+          ? FirebaseFirestore.instance.collection('albums').doc(albumId).get()
           : null,
       builder: (context, albumSnapshot) {
         String albumName = 'Sin Álbum';
-        if (albumId != null && albumSnapshot.hasData && albumSnapshot.data!.exists) {
+        if (albumId != null &&
+            albumSnapshot.hasData &&
+            albumSnapshot.data!.exists) {
           albumName = albumSnapshot.data!['name'];
         }
 
@@ -202,7 +203,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     }
   }
 
-  Widget _buildFloatingActionButton(BuildContext context, DocumentReference<Object?>? photoRef) {
+  Widget _buildFloatingActionButton(
+      BuildContext context, DocumentReference<Object?>? photoRef) {
     if (photoRef == null) {
       // Si no hay photoRef, no mostramos el FAB
       return Container();
@@ -280,7 +282,8 @@ class _PhotoDetailPageState extends State<PhotoDetailPage> {
     );
   }
 
-  void _moveToAlbum(BuildContext context, Map<String, dynamic> photoData) async {
+  void _moveToAlbum(
+      BuildContext context, Map<String, dynamic> photoData) async {
     String? currentAlbumId = photoData['albumId'];
 
     // Obtener la lista de álbumes

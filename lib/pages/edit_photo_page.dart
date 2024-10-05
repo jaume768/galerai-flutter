@@ -110,8 +110,8 @@ class _EditPhotoPageState extends State<EditPhotoPage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Tags',
-                      style:
-                      TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                          fontSize: 16.0, fontWeight: FontWeight.bold),
                     ),
                   ),
                   Wrap(
